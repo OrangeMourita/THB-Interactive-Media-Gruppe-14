@@ -74,9 +74,8 @@ void checkDifs(int difs[]) {
   } else {
     digitalWrite(G, HIGH);
     digitalWrite(R, LOW);
-    digitalWrite(buzzer, HIGH);
+    tone(buzzer, 1000, 500);
     delay(500);
-    digitalWrite(buzzer, LOW);
     openFlower();
     delay(1000);
   }
