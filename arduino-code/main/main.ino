@@ -1,107 +1,177 @@
 #include <Servo.h>
 
-const int analog = A0;
-const int digital = 2;
-const int R = 12;
-const int G = 13;
-const int servo = 9;
-const int buzzer = 3;
+// ---------------------- Pins ----------------------
+
+const int soundPin = A0;
+
+const int servoPin = 6;
+const int buzzerPin = 3;
+
+const int rgbRedPin = 9;
+const int rgbGreenPin = 10;
+const int rgbBluePin = 11;
+
+// ---------------------- Einstellungen ----------------------
+
+const int WINDOW_COUNT = 5;
+const int SAMPLE_COUNT = 100;
+const int SAMPLE_DELAY = 5;
+
+// Schwellwerte (ggf. anpassen)
+const int OPEN_THRESHOLD = 60;
+const int CLOSE_THRESHOLD = 80;
+
+// ---------------------- Globale Variablen ----------------------
 
 Servo myservo;
-bool open = false;
 
-int val = 0;
-int messungen[50];
+bool flowerOpen = true;
+
+// ---------------------- Setup ----------------------
+
 void setup() {
-  // put your setup code here, to run once:
+
   Serial.begin(9600);
-  pinMode(R, OUTPUT);
-  pinMode(G, OUTPUT);
-  pinMode(buzzer, OUTPUT);
-  myservo.attach(servo);
+
+  pinMode(rgbRedPin, OUTPUT);
+  pinMode(rgbGreenPin, OUTPUT);
+  pinMode(rgbBluePin, OUTPUT);
+
+  pinMode(buzzerPin, OUTPUT);
+
+  myservo.attach(servoPin);
+
+  openFlower();
 }
 
+// ---------------------- Servo ----------------------
+
 void openFlower() {
-  if (!open) {
-    for(int i = 90; i >= -90; i -= 10) {
+  if (flowerOpen) {
+    Serial.println("Blume bereits geöffnet!");
+    return;
+  };
+
+  for(int i = 90; i >= -90; i -= 10) {
       myservo.write(90-i);
-      delay(200);
+      delay(150);
     }
-    open = true;
-  }
-  
+
+  flowerOpen = true;
 }
 
 void closeFlower() {
-  if (open) {
-    for(int i = -90; i <= 90; i += 10) {
+  if (!flowerOpen) {
+    Serial.println("Blue bereits geschlossen!");
+    return;
+  };
+
+  for(int i = -90; i <= 90; i += 10) {
       myservo.write(90-i);
-      delay(200);
-    }
-    open = false;
+      delay(150);
   }
-  
+
+  flowerOpen = false;
 }
 
-int dif(int messungen[]) {
-  int min = messungen[0];
-  int max = messungen[0];
+// ---------------------- RGB ----------------------
 
-  for (int i = 1; i < 50; i++) {
-    if (messungen[i] > max) {
-      max = messungen[i];
-    } else if (messungen[i] < min) {
-      min = messungen[i];
-    }
-  }
-    return max-min;
-  
+void changeRgbColor(byte red, byte green, byte blue) {
+
+  analogWrite(rgbRedPin, red);
+  analogWrite(rgbGreenPin, green);
+  analogWrite(rgbBluePin, blue);
 }
 
-void checkDifs(int difs[]) {
-  int threshold = 20;
-  int counter = 0;
-  for (int i = 0; i < 10; i++) {
-    if (difs[i] >= threshold) {
-      counter += 1;
-    }
+// ---------------------- Soundsensor ----------------------
+
+int measureDifference() {
+
+  int minimum = 1023;
+  int maximum = 0;
+
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+
+    int value = analogRead(soundPin);
+
+    if (value < minimum)
+      minimum = value;
+
+    if (value > maximum)
+      maximum = value;
+
+    delay(SAMPLE_DELAY);
   }
-  if (counter >= 4) {
-    digitalWrite(G, LOW);
-    digitalWrite(R, HIGH);
-    closeFlower();
-    delay(1000);
-  } else {
-    digitalWrite(G, HIGH);
-    digitalWrite(R, LOW);
-    tone(buzzer, 1000, 500);
-    delay(500);
-    openFlower();
-    delay(1000);
-  }
+
+  return maximum - minimum;
 }
+
+int measureNoiseLevel() {
+
+  long sum = 0;
+
+  for (int i = 0; i < WINDOW_COUNT; i++) {
+
+    int diff = measureDifference();
+
+    Serial.print("Fenster ");
+    Serial.print(i + 1);
+    Serial.print(": ");
+    Serial.println(diff);
+
+    sum += diff;
+  }
+
+  return sum / WINDOW_COUNT;
+}
+
+// ---------------------- Hauptprogramm ----------------------
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  int difs[10];
-  for(int i = 0; i < 10; i++) {
-    for(int i = 0; i < 50; i++) {
-      val = analogRead(analog);
-      //Serial.println(val);
-      messungen[i] = val;
-      delay(10);
-    }
-    int difference = dif(messungen);
-    Serial.println(difference);
-    difs[i] = difference;
-    checkDifs(difs);
+
+  int noise = measureNoiseLevel();
+
+  Serial.print("Durchschnitt: ");
+  Serial.println(noise);
+
+  // ---------- LED ----------
+
+  if (noise < OPEN_THRESHOLD) {
+
+    // Grün
+    changeRgbColor(0, 255, 0);
+
+  } else if (noise < CLOSE_THRESHOLD) {
+
+    // Magenta
+    changeRgbColor(255,   0, 255); delay(1000); // Magenta
+
+  } else {
+
+    // Rot
+    changeRgbColor(255, 0, 0);
+
   }
-  /*
-  digitalWrite(G, HIGH);
-  openFlower();
+
+  // ---------- Blume ----------
+
+  if (flowerOpen && noise > CLOSE_THRESHOLD) {
+
+    Serial.println("Zu laut -> Blume schließt");
+
+    tone(buzzerPin, 800, 2200);
+
+    closeFlower();
+
+  }
+
+  else if (!flowerOpen && noise < OPEN_THRESHOLD) {
+
+    Serial.println("Wieder ruhig -> Blume öffnet");
+
+    openFlower();
+
+  }
+
   delay(1000);
-  digitalWrite(G, LOW);
-  closeFlower();
-  delay(1000);
-  */
 }
